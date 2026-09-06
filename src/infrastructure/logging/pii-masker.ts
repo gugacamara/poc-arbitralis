@@ -82,20 +82,52 @@ const MAX_DEPTH = 12;
 
 const EMAIL_PATTERN = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const CPF_PATTERN = /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g;
-/** Sequencia de 8+ digitos, tolerando `+`, espacos, hifens e parenteses. */
-const PHONE_PATTERN = /\+?\d[\d\s().-]{6,}\d/g;
+/**
+ * Sequencia de digitos com cara de telefone, tolerando `+`, espacos, hifens e
+ * parenteses.
+ *
+ * Os lookarounds sao essenciais: sem eles a regex casa *dentro* de
+ * identificadores como UUID (`...-8064-0338-...`) e wamid, corrompendo
+ * justamente os campos de correlacao que o log existe para preservar.
+ */
+const PHONE_PATTERN = /(?<![\w-])\+?\d[\d\s().-]{6,}\d(?![\w-])/g;
+
+/**
+ * Faixa de um telefone real: E.164 admite ate 15 digitos; o minimo pratico e 8.
+ *
+ * Um epoch em milissegundos (13 digitos) cai nesta faixa e sera mascarado se
+ * aparecer solto em texto livre — falso positivo aceito de proposito, porque a
+ * alternativa e deixar passar telefone internacional. Campos numericos
+ * estruturados (`timestamp`, `durationMs`, `latencyMs`) nao sao afetados: sao
+ * `number`, e o mascarador so inspeciona strings.
+ */
+const MIN_PHONE_DIGITS = 8;
+const MAX_PHONE_DIGITS = 15;
 
 /** Mascara PII em uma string livre, sem qualquer pista de nome de campo. */
 export function maskText(value: string): string {
   return value
     .replace(EMAIL_PATTERN, maskEmail)
     .replace(CPF_PATTERN, (cpf) => `***.***.***-${cpf.slice(-2)}`)
-    .replace(PHONE_PATTERN, maskPhone);
+    .replace(PHONE_PATTERN, maskPhoneIfPlausible);
 }
 
 /** Mascara PII recursivamente em um objeto de contexto de log. */
 export function maskContext(context: Record<string, unknown>): Record<string, unknown> {
   return maskObject(context, 0, new WeakSet());
+}
+
+/**
+ * Segunda barreira contra falso positivo: sequencia longa ou curta demais para
+ * ser telefone volta intacta. Protege timestamps em milissegundos e ids
+ * numericos, que perderiam todo o valor diagnostico se mascarados.
+ */
+function maskPhoneIfPlausible(match: string): string {
+  const digits = match.replace(/\D/g, '').length;
+
+  return digits >= MIN_PHONE_DIGITS && digits <= MAX_PHONE_DIGITS
+    ? maskPhone(match)
+    : match;
 }
 
 /**
