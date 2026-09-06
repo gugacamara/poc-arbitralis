@@ -37,11 +37,14 @@ export default tseslint.config(
     },
   },
   {
-    // Testes: asserts e mocks toleram um pouco mais de folga.
+    // Testes: asserts e fakes toleram mais folga que codigo de producao.
     files: ['tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/unbound-method': 'off',
+      // Um fake que implementa um contrato assincrono precisa ser `async`
+      // mesmo sem `await` interno; aqui a ausencia e deliberada, nao descuido.
+      '@typescript-eslint/require-await': 'off',
     },
   },
   prettier,
